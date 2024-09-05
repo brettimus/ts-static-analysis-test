@@ -4,7 +4,8 @@
 	"description": "",
 	"main": "index.js",
 	"scripts": {
-		"test": "echo \"Error: no test specified\" && exit 1"
+		"analyze": "node --inspect-brk -r tsx/cjs ast-analysis.ts",
+		"type-check": "tsc --noEmit"
 	},
 	"keywords": [],
 	"author": "",
