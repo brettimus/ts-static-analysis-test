@@ -4,7 +4,8 @@
 	"description": "",
 	"main": "index.js",
 	"scripts": {
-		"analyze": "node --inspect-brk -r tsx/cjs ast-analysis.ts",
+		"analyze": "tsx ast-analysis.ts",
+    "analyze:debug": "node --inspect-brk -r tsx/cjs ast-analysis.ts",
 		"type-check": "tsc --noEmit"
 	},
 	"keywords": [],

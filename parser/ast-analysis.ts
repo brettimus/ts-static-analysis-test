@@ -8,6 +8,29 @@ function visitNode(node: ts.Node, sourceFile: ts.SourceFile | undefined) {
 		return;
 	}
 
+  // Look for method calls (like app.get)
+  if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression)) {
+    const methodName = node.expression.name.text;
+    const objectName = node.expression.expression.getText(sourceFile);
+
+    // Check if it's a Hono route definition
+    if (objectName === 'app' && ['get', 'post', 'put', 'delete', 'patch'].includes(methodName)) {
+      console.log(`Found Hono route: ${objectName}.${methodName}`);
+
+      // Get the route path (first argument)
+      if (node.arguments.length > 0 && ts.isStringLiteral(node.arguments[0])) {
+        console.log(`  Route path: ${node.arguments[0].text}`);
+      }
+
+      // Get the handler function (second argument)
+      if (node.arguments.length > 1) {
+        const handler = node.arguments[1];
+        console.log(`  Handler: ${handler.getText(sourceFile)}`);
+      }
+    }
+  }
+
+
 	console.log(`Node kind: ${ts.SyntaxKind[node.kind]}`);
 	
 	try {
