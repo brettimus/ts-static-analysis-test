@@ -26,10 +26,10 @@ function searchFile(
   function visit(node: ts.Node) {
     const isFunction =
       ts.isFunctionDeclaration(node) || ts.isArrowFunction(node);
-    if (isFunction) {
-      console.log("matched function node:", node);
-      console.log(node?.getText());
-    }
+    // if (isFunction) {
+    //   console.log("matched function node:", node);
+    //   console.log(node?.getText());
+    // }
     if (isFunction && node?.getText() === searchString) {
       console.log("matched function!");
       const { line: startLine, character: startColumn } =
@@ -37,13 +37,67 @@ function searchFile(
       const { line: endLine, character: endColumn } =
         sourceFile.getLineAndCharacterOfPosition(node.getEnd());
 
+      const context: ExpandedFunctionContext = [];
+      const program = ts.createProgram([filePath], {});
+      const checker = program.getTypeChecker();
+
+      const localDeclarations = new Set<string>();
+      const usedIdentifiers = new Set<string>();
+
+      // First pass: collect local declarations
+      ts.forEachChild(node, function collectDeclarations(childNode) {
+        if (ts.isVariableDeclaration(childNode) && childNode.name.kind === ts.SyntaxKind.Identifier) {
+          localDeclarations.add((childNode.name as ts.Identifier).text);
+        }
+        if (ts.isParameter(childNode) && childNode.name.kind === ts.SyntaxKind.Identifier) {
+          localDeclarations.add((childNode.name as ts.Identifier).text);
+        }
+        ts.forEachChild(childNode, collectDeclarations);
+      });
+
+      // Second pass: collect used identifiers
+      ts.forEachChild(node, function collectIdentifiers(childNode) {
+        if (ts.isIdentifier(childNode)) {
+          // Check if the identifier is part of a property access
+          if (ts.isPropertyAccessExpression(childNode.parent)) {
+            // If it's the property name, skip it
+            if (childNode === childNode.parent.name) {
+              return;
+            }
+            // If it's the expression (left-hand side) and it's a local variable, skip it
+            if (childNode === childNode.parent.expression && localDeclarations.has(childNode.text)) {
+              return;
+            }
+          }
+
+          // If it's not a local declaration and not part of a skipped property access, add it
+          if (!localDeclarations.has(childNode.text)) {
+            usedIdentifiers.add(childNode.text);
+          }
+        }
+        ts.forEachChild(childNode, collectIdentifiers);
+      });
+
+      // Add out-of-scope identifiers to context
+      // biome-ignore lint/complexity/noForEach: <explanation>
+      usedIdentifiers.forEach(identifier => {
+        // TODO - Add position!!!
+        context.push({
+          name: identifier,
+          type: 'unknown', // We can't reliably get the type without a working symbol
+          value: 'Out of scope or imported',
+        });
+      });
+
+      console.log("contextttt", context);
+
       result = {
         file: filePath,
         startLine: startLine + 1,
         startColumn: startColumn + 1,
         endLine: endLine + 1,
         endColumn: endColumn + 1,
-        context: [], // You may want to implement context extraction here
+        context: context,
       };
     }
 
@@ -112,8 +166,6 @@ async function extractContext(
   endLine: number,
   endColumn: number,
 ): Promise<ExpandedFunctionContext> {
-
-
   const context: ExpandedFunctionContext = [];
 
   // TODO: Implement logic to extract context
@@ -122,16 +174,41 @@ async function extractContext(
   // 2. Analyzing its dependencies (imports, referenced variables, etc.)
   // 3. Populating the context array with relevant information
 
-
   try {
-    const connection = getTSServer(projectRoot);
-    const response = await connection.sendRequest('textDocument/definition', {
-      textDocument: { uri: `file://${filePath}` },
+    const connection = await getTSServer(projectRoot);
+
+    // Open the document containing the function explicitly
+    const funcFileUri = `file://${filePath.replace(/\\/g, '/')}`;
+    const fileContent = fs.readFileSync(filePath, 'utf-8');
+    await connection.sendNotification('textDocument/didOpen', {
+      textDocument: {
+        uri: funcFileUri,
+        languageId: 'typescript',
+        version: 1,
+        text: fileContent,
+      },
+    });
+
+    console.debug('Opened document:', funcFileUri);
+
+    // const _definitionResponse = await connection.sendRequest('textDocument/definition', {
+    //   textDocument: { uri: funcFileUri },
+    //   position: { line: 0, character: 10 }
+    // });
+
+    // console.log("mehhhh response", JSON.stringify(_definitionResponse, null, 2));
+
+
+    const definitionResponse = await connection.sendRequest('textDocument/definition', {
+      textDocument: { uri: funcFileUri },
       position: { line: startLine - 1, character: startColumn - 1 }
     });
 
-    if (Array.isArray(response) && response.length > 0) {
-      const definition = response[0];
+    console.log("response", definitionResponse);
+    if (Array.isArray(definitionResponse) && definitionResponse.length > 0) {
+
+      const definition = definitionResponse[0];
+      console.log("definition", definition);
       context.push({
         name: definition.name || 'Unknown',
         type: 'function',
