@@ -34,6 +34,9 @@
 	"overrides": [],
 	"files": {
 		"ignore": [
+			// vscode
+			".vscode/launch.json",
+
 			// Drizzle related
 			"meta/*.json",
 
