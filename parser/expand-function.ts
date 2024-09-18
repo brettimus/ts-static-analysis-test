@@ -59,6 +59,7 @@ function searchFile(
       ts.forEachChild(node, function collectIdentifiers(childNode) {
         if (ts.isIdentifier(childNode)) {
           // Check if the identifier is part of a property access
+          // FIXME - if it's a property access on an out-of-scope variable, we should still include it
           if (ts.isPropertyAccessExpression(childNode.parent)) {
             // If it's the property name, skip it
             if (childNode === childNode.parent.name) {
