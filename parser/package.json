@@ -1,21 +1,25 @@
 {
-	"name": "parser",
-	"version": "1.0.0",
-	"description": "",
-	"main": "index.js",
-	"scripts": {
-		"analyze": "tsx ast-analysis.ts",
-		"analyze:debug": "node --inspect-brk -r tsx/cjs ast-analysis.ts",
-		"test": "vitest",
-		"type-check": "tsc --noEmit"
-	},
-	"keywords": [],
-	"author": "",
-	"license": "ISC",
-	"devDependencies": {
-		"@types/node": "^22.5.4",
-		"tsx": "^4.19.0",
-		"typescript": "^5.5.4",
-		"vitest": "^2.1.1"
-	}
+  "name": "parser",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "analyze": "tsx ast-analysis.ts",
+    "analyze:debug": "node --inspect-brk -r tsx/cjs ast-analysis.ts",
+    "test": "vitest",
+    "type-check": "tsc --noEmit"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "@types/node": "^22.5.4",
+    "tsx": "^4.19.0",
+    "typescript": "^5.5.4",
+    "vitest": "^2.1.1"
+  },
+  "dependencies": {
+    "typescript-language-server": "^4.3.3",
+    "vscode-jsonrpc": "^8.2.1"
+  }
 }
