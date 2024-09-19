@@ -53,7 +53,7 @@ function searchFile(
   filePath: string,
   searchString: string,
 ): SearchFunctionResult | null {
-  console.log("Searching file:", filePath);
+  console.debug('[debug] Searching file:', filePath);
   const sourceFile = ts.createSourceFile(
     filePath,
     fs.readFileSync(filePath, "utf-8"),
@@ -70,10 +70,9 @@ function searchFile(
     //   console.log("matched function node:", node);
     //   console.log(node?.getText());
     // }
-
     // Look for the matching function definition
     if (isFunction && node?.getText() === searchString) {
-      console.log("matched function!");
+      console.debug('[debug] matched function we were looking for!');
       const { line: startLine, character: startColumn } =
         sourceFile.getLineAndCharacterOfPosition(node.getStart());
       const { line: endLine, character: endColumn } =

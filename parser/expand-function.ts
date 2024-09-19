@@ -18,7 +18,7 @@ type ExpandedFunctionContext = Array<{
   /** The type of the constant or utility (function, string, etc) */
   type: string;
   /** The position of the constant or utility in the code */
-  position: ts.LineAndCharacter;
+  position: { line: number; character: number };
   definition?: {
     uri: string;
     range: {
