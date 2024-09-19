@@ -22,6 +22,7 @@
   },
   "dependencies": {
     "typescript-language-server": "^4.3.3",
-    "vscode-jsonrpc": "^8.2.1"
+    "vscode-jsonrpc": "^8.2.1",
+    "vscode-uri": "^3.0.8"
   }
 }

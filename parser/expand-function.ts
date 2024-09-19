@@ -1,6 +1,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import * as ts from "typescript";
+import { URI } from 'vscode-uri';
 import { getTSServer } from "./tsserver";
 
 // TODO
@@ -12,7 +13,7 @@ import { getTSServer } from "./tsserver";
 function searchFile(
   filePath: string,
   searchString: string,
-): ExpandedFunctionResult | null {
+): SearchFunctionResult | null {
   console.log("Searching file:", filePath);
   const sourceFile = ts.createSourceFile(
     filePath,
@@ -21,7 +22,7 @@ function searchFile(
     true,
   );
 
-  let result: ExpandedFunctionResult | null = null;
+  let result: SearchFunctionResult | null = null;
 
   function visit(node: ts.Node) {
     const isFunction =
@@ -30,6 +31,8 @@ function searchFile(
     //   console.log("matched function node:", node);
     //   console.log(node?.getText());
     // }
+
+    // Look for the matching function definition
     if (isFunction && node?.getText() === searchString) {
       console.log("matched function!");
       const { line: startLine, character: startColumn } =
@@ -37,29 +40,35 @@ function searchFile(
       const { line: endLine, character: endColumn } =
         sourceFile.getLineAndCharacterOfPosition(node.getEnd());
 
-      const context: ExpandedFunctionContext = [];
-      const program = ts.createProgram([filePath], {});
-      const checker = program.getTypeChecker();
+      const identifiers: FunctionOutOfScopeIdentifiers = [];
+      // const program = ts.createProgram([filePath], {});
+      // const checker = program.getTypeChecker();
 
+      // Now we want to determin all identifiers that are in scope,
+      // and all identifiers that are used but not declared in the current function
+      // We can do this by traversing the AST and collecting declarations and usages
       const localDeclarations = new Set<string>();
-      const usedIdentifiers = new Set<string>();
+      const usedIdentifiers = new Map<string, ts.LineAndCharacter>();
 
-      // First pass: collect local declarations
+      // First pass: recursively collect local declaration
+      //
+      // NOTE - This should not incur a stack overflow, in spite of its recursion,
+      // because the function is not calling itself, it's passing itself to an iterator as a callback
       ts.forEachChild(node, function collectDeclarations(childNode) {
         if (ts.isVariableDeclaration(childNode) && childNode.name.kind === ts.SyntaxKind.Identifier) {
-          localDeclarations.add((childNode.name as ts.Identifier).text);
+          localDeclarations.add(childNode.name.text);
         }
         if (ts.isParameter(childNode) && childNode.name.kind === ts.SyntaxKind.Identifier) {
-          localDeclarations.add((childNode.name as ts.Identifier).text);
+          localDeclarations.add(childNode.name.text);
         }
         ts.forEachChild(childNode, collectDeclarations);
       });
 
       // Second pass: collect used identifiers
+      // - If it's a property access on a declared local variable, skip it
       ts.forEachChild(node, function collectIdentifiers(childNode) {
         if (ts.isIdentifier(childNode)) {
           // Check if the identifier is part of a property access
-          // FIXME - if it's a property access on an out-of-scope variable, we should still include it
           if (ts.isPropertyAccessExpression(childNode.parent)) {
             // If it's the property name, skip it
             if (childNode === childNode.parent.name) {
@@ -69,28 +78,37 @@ function searchFile(
             if (childNode === childNode.parent.expression && localDeclarations.has(childNode.text)) {
               return;
             }
+            // If it's the expression but not a local variable, include it
+            // Example: Property accesse expression on an out-of-scope variable
+            if (childNode === childNode.parent.expression) {
+              const pos = sourceFile.getLineAndCharacterOfPosition(childNode.getStart());
+              usedIdentifiers.set(childNode.text, pos);
+              return;
+            }
           }
 
           // If it's not a local declaration and not part of a skipped property access, add it
           if (!localDeclarations.has(childNode.text)) {
-            usedIdentifiers.add(childNode.text);
+            const pos = sourceFile.getLineAndCharacterOfPosition(childNode.getStart());
+            usedIdentifiers.set(childNode.text, pos);
           }
         }
         ts.forEachChild(childNode, collectIdentifiers);
       });
 
       // Add out-of-scope identifiers to context
-      // biome-ignore lint/complexity/noForEach: <explanation>
-      usedIdentifiers.forEach(identifier => {
-        // TODO - Add position!!!
-        context.push({
+      usedIdentifiers.forEach((position, identifier) => {
+        identifiers.push({
           name: identifier,
-          type: 'unknown', // We can't reliably get the type without a working symbol
-          value: 'Out of scope or imported',
+          // We can't reliably get the type without a working symbol table,
+          // which I think would require loading the entire project (all files) in to a 
+          // typescript program and using its checker
+          type: 'unknown',
+          position,
         });
       });
 
-      console.log("contextttt", context);
+      console.log("identifiers", identifiers);
 
       result = {
         file: filePath,
@@ -98,7 +116,7 @@ function searchFile(
         startColumn: startColumn + 1,
         endLine: endLine + 1,
         endColumn: endColumn + 1,
-        context: context,
+        identifiers,
       };
     }
 
@@ -136,13 +154,47 @@ function searchDir(dirPath: string, searchString: string) {
   return null;
 }
 
+
+
+type FunctionOutOfScopeIdentifiers = Array<{
+  /** The name of the constant or utility in the code */
+  name: string;
+  /** The type of the constant or utility (function, string, etc) */
+  type: string;
+  /** The position of the constant or utility in the code */
+  position: ts.LineAndCharacter;
+}>;
+
+
+type SearchFunctionResult = {
+  /** The file in which the function was found */
+  file: string;
+  /** The line on which the function definition starts */
+  startLine: number;
+  /** The column on which the function definition starts */
+  startColumn: number;
+  /** The line on which the function definition ends */
+  endLine: number;
+  /** The column on which the function definition ends */
+  endColumn: number;
+  identifiers: FunctionOutOfScopeIdentifiers;
+};
+
 type ExpandedFunctionContext = Array<{
   /** The name of the constant or utility in the code */
   name: string;
   /** The type of the constant or utility (function, string, etc) */
   type: string;
-  /** The stringified value of the constant or utility */
-  value: string;
+  /** The position of the constant or utility in the code */
+  position: ts.LineAndCharacter;
+  definition?: {
+    uri: string;
+    range: {
+      start: { line: number; character: number };
+      end: { line: number; character: number };
+    };
+    text: string;
+  };
 }>;
 
 type ExpandedFunctionResult = {
@@ -162,10 +214,7 @@ type ExpandedFunctionResult = {
 async function extractContext(
   projectRoot: string,
   filePath: string,
-  startLine: number,
-  startColumn: number,
-  endLine: number,
-  endColumn: number,
+  identifiers: FunctionOutOfScopeIdentifiers,
 ): Promise<ExpandedFunctionContext> {
   const context: ExpandedFunctionContext = [];
 
@@ -175,10 +224,14 @@ async function extractContext(
   // 2. Analyzing its dependencies (imports, referenced variables, etc.)
   // 3. Populating the context array with relevant information
 
+  if (!identifiers?.length) {
+    return [];
+  }
+
   try {
     const connection = await getTSServer(projectRoot);
 
-    // Open the document containing the function explicitly
+    // Open the document containing the function
     const funcFileUri = `file://${filePath.replace(/\\/g, '/')}`;
     const fileContent = fs.readFileSync(filePath, 'utf-8');
     await connection.sendNotification('textDocument/didOpen', {
@@ -190,7 +243,76 @@ async function extractContext(
       },
     });
 
-    console.debug('Opened document:', funcFileUri);
+    console.debug('[debug] Opened document:', funcFileUri);
+
+    for (const identifier of identifiers) {
+      const definitionResponse = await connection.sendRequest('textDocument/definition', {
+        textDocument: { uri: funcFileUri },
+        position: identifier.position
+      });
+
+      console.log(`Definition for ${identifier.name}:`, JSON.stringify(definitionResponse, null, 2));
+
+      if (Array.isArray(definitionResponse) && definitionResponse.length > 0) {
+        const definition = definitionResponse[0];
+
+        console.debug(`[debug] definition response for ${identifier.name}`, definition)
+
+        const definitionUri = URI.parse(definition.uri);
+        const definitionFilePath = definitionUri.fsPath;
+
+        // Read the file content
+        const fileContent = fs.readFileSync(definitionFilePath, 'utf-8');
+
+        // Parse the file
+        const sourceFile = ts.createSourceFile(
+          definitionFilePath,
+          fileContent,
+          ts.ScriptTarget.Latest,
+          true
+        );
+
+        // Find the node at the definition position
+        // const node = findNodeAtPosition(sourceFile, definition.range.start);
+
+
+        // Extract the relevant text using the range
+        const lines = fileContent.split('\n');
+        const { start, end } = definition.range;
+        const definitionText = lines
+          .slice(start.line, end.line + 1)
+          .map((line, index) => {
+            if (index === 0 && index === end.line - start.line) {
+              return line.substring(start.character, end.character);
+            }
+            if (index === 0) {
+              return line.substring(start.character);
+            }
+            if (index === end.line - start.line) {
+              return line.substring(0, end.character);
+            }
+            return line;
+          })
+          .join('\n');
+
+        const contextEntry = {
+          name: identifier.name,
+          type: identifier.type,
+          position: identifier.position,
+          definition: {
+            uri: definition.uri,
+            range: definition.range,
+            text: definitionText
+          }
+        }
+
+        console.debug(`[debug] context entry for ${identifier.name}`, contextEntry)
+        
+        context.push(contextEntry);
+      } else {
+        console.log(`No definition found for ${identifier.name}`);
+      }
+    }
 
     // const _definitionResponse = await connection.sendRequest('textDocument/definition', {
     //   textDocument: { uri: funcFileUri },
@@ -200,22 +322,22 @@ async function extractContext(
     // console.log("mehhhh response", JSON.stringify(_definitionResponse, null, 2));
 
 
-    const definitionResponse = await connection.sendRequest('textDocument/definition', {
-      textDocument: { uri: funcFileUri },
-      position: { line: startLine - 1, character: startColumn - 1 }
-    });
+    // const definitionResponse = await connection.sendRequest('textDocument/definition', {
+    //   textDocument: { uri: funcFileUri },
+    //   position: { line: startLine - 1, character: startColumn - 1 }
+    // });
 
-    console.log("response", definitionResponse);
-    if (Array.isArray(definitionResponse) && definitionResponse.length > 0) {
+    // console.log("response", definitionResponse);
+    // if (Array.isArray(definitionResponse) && definitionResponse.length > 0) {
 
-      const definition = definitionResponse[0];
-      console.log("definition", definition);
-      context.push({
-        name: definition.name || 'Unknown',
-        type: 'function',
-        value: `Defined in ${definition.uri}, line ${definition.range.start.line + 1}`
-      });
-    }
+    //   const definition = definitionResponse[0];
+    //   console.log("definition", definition);
+    //   context.push({
+    //     name: definition.name || 'Unknown',
+    //     type: 'function',
+    //     value: `Defined in ${definition.uri}, line ${definition.range.start.line + 1}`
+    //   });
+    // }
 
     // TODO: Add more requests to gather additional context
     // For example, you might want to get references, hover information, etc.
@@ -232,21 +354,18 @@ export async function expandFunction(
   srcPath: string,
   func: string,
 ): Promise<ExpandedFunctionResult | null> {
-  const location = searchDir(srcPath, func);
-  if (!location) {
+  const searchResult = searchDir(srcPath, func);
+  if (!searchResult) {
     return null;
   }
 
   const context = await extractContext(
     projectRoot,
-    location.file,
-    location.startLine,
-    location.startColumn,
-    location.endLine,
-    location.endColumn,
+    searchResult.file,
+    searchResult.identifiers
   );
   return {
-    ...location,
+    ...searchResult,
     context,
   };
 }
