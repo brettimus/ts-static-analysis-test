@@ -6,7 +6,8 @@ import { getTSServer } from "./tsserver";
 const projectRoot = path.resolve(__dirname, "../app");
 const srcPath = path.resolve(__dirname, "../app/src");
 
-const functionToLocate = `(c) => {
+// biome-ignore lint/correctness/noUnusedVariables: This is a smoke testing file
+const functionWithConstant = `(c) => {
   const auth = c.req.header("Authorization");
   if (auth && PASSPHRASES.includes(auth)) {
     return c.text("Hello Hono!");
@@ -14,10 +15,19 @@ const functionToLocate = `(c) => {
   return c.text("Unauthorized", 401);
 }`.trim();
 
+const functionWithHelper = `(c) => {
+  const shouldSayHello = helperFunction(c.req);
+  return c.text(shouldSayHello ? "Hello Helper Function!" : "Helper Function");
+}`.trim();
+
 async function main() {
   try {
     // await tsServerTest();
-    const result = await expandFunction(projectRoot, srcPath, functionToLocate);
+    const result = await expandFunction(
+      projectRoot,
+      srcPath,
+      functionWithHelper,
+    );
     console.log(result);
   } catch (error) {
     console.error(error);

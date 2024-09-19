@@ -1,7 +1,7 @@
 import * as fs from "node:fs";
 import ts from "typescript";
 import { URI } from "vscode-uri";
-import { findNodeAtPosition } from "./ast-helpers";
+import { findNodeAtPosition, getDefinitionText } from "./ast-helpers";
 import {
   type FunctionOutOfScopeIdentifiers,
   searchForFunction,
@@ -13,7 +13,7 @@ import { getTSServer } from "./tsserver";
 // - find handler in codebase
 // - look for anything it references
 // - expand that code
-// - REPEAT for each reference
+// - (todo) REPEAT for each reference's value
 
 type ExpandedFunctionContext = Array<{
   /** The name of the constant or utility in the code */
@@ -120,6 +120,7 @@ async function extractContext(
       );
 
       if (Array.isArray(definitionResponse) && definitionResponse.length > 0) {
+        // INVESTIGATE - When is definitionResponse longer than 1?
         const definition = definitionResponse[0];
         const definitionUri = URI.parse(definition.uri);
         const definitionFilePath = definitionUri.fsPath;
@@ -138,24 +139,11 @@ async function extractContext(
         // Find the node at the definition position
         const node = findNodeAtPosition(sourceFile, definition.range.start);
 
+        console.debug(`[debug] AST node for ${identifier.name}:`, node);
+
         // If there's a node, we can try to extract the value of the definition
         if (node) {
-          let valueText = "Unable to determine value";
-
-          if (ts.isVariableDeclaration(node) && node.initializer) {
-            valueText = node.initializer.getText(sourceFile);
-          } else if (
-            ts.isFunctionDeclaration(node) ||
-            ts.isArrowFunction(node)
-          ) {
-            valueText = node.getText(sourceFile);
-          } else if (
-            ts.isIdentifier(node) &&
-            ts.isVariableDeclaration(node.parent) &&
-            node.parent.initializer
-          ) {
-            valueText = node.parent.initializer.getText(sourceFile);
-          }
+          const valueText = getDefinitionText(node, sourceFile);
 
           const contextEntry = {
             name: identifier.name,
