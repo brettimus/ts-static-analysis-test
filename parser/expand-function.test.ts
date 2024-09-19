@@ -20,6 +20,7 @@ const functionWithHelper = `(c) => {
   return c.text(shouldSayHello ? "Hello Helper Function!" : "Helper Function");
 }`.trim();
 
+// A function in `<root>/app/src/index.ts` that has a helper function that is out of scope and in another file
 const functionWithHelperInAnotherFile = `(c) => {
   const auth = getAuthHeader(c.req);
   if (auth && PASSPHRASES.includes(auth)) {
@@ -29,7 +30,7 @@ const functionWithHelperInAnotherFile = `(c) => {
 }`.trim();
 
 describe("expandFunction", () => {
-  describe("single file", () => {
+  describe("single file - app/src/index.ts", () => {
     it("should return the function location and definition of a constant identifier that is out of scope", async () => {
       const result = await expandFunction(
         projectRoot,
@@ -71,8 +72,8 @@ describe("expandFunction", () => {
     });
   });
 
-  describe("multiple files", () => {
-    it.only("should return the function location and definition of a function identifier that is out of scope", async () => {
+  describe("multiple files - app/src/index.ts, app/src/utils.ts", () => {
+    it("should return the function location and definition of a function identifier that is out of scope", async () => {
       const result = await expandFunction(
         projectRoot,
         srcPath,
@@ -86,10 +87,16 @@ describe("expandFunction", () => {
       expect(result?.endLine).toBe(27);
       expect(result?.endColumn).toBe(2);
 
-      expect(result?.context?.[0]?.definition?.text).toBe(
-        `function getAuthHeader(req: HonoRequest) {
+      expect(result?.context).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            definition: expect.objectContaining({
+              text: `export function getAuthHeader(req: HonoRequest) {
   return req.header("Authorization");
 }`.trim(),
+            }),
+          }),
+        ]),
       );
     });
   });

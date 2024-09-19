@@ -1,8 +1,6 @@
 import fs from "node:fs";
-import ts from "typescript";
+import type ts from "typescript";
 import type { MessageConnection } from "vscode-jsonrpc/node";
-import { URI } from "vscode-uri";
-import { findNodeAtPosition } from "../ast-helpers/ast-helpers";
 import { getFileUri } from "./utils";
 
 export async function openFile(
@@ -51,28 +49,4 @@ export async function getDefinition(
   }
 
   return null;
-}
-
-// TODO - Move to ast helpers...
-//
-// biome-ignore lint/suspicious/noExplicitAny: We don't have a type for the definition response yet
-export function definitionToNode(definition: any) {
-  const definitionUri = URI.parse(definition.uri);
-  const definitionFilePath = definitionUri.fsPath;
-
-  // Read the file content for the file that contains the definition
-  const fileContent = fs.readFileSync(definitionFilePath, "utf-8");
-
-  // Parse the file to do ast analysis
-  const sourceFile = ts.createSourceFile(
-    definitionFilePath,
-    fileContent,
-    ts.ScriptTarget.Latest,
-    true,
-  );
-
-  // Find the node at the definition position
-  const node = findNodeAtPosition(sourceFile, definition.range.start);
-
-  return { node, sourceFile };
 }

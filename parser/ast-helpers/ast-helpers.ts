@@ -1,4 +1,6 @@
+import fs from "node:fs";
 import * as ts from "typescript";
+import { URI } from "vscode-uri";
 
 export function getParentImportDeclaration(
   node: ts.Node,
@@ -74,4 +76,28 @@ function positionInNode(
     (start.line < line || start.character <= character) &&
     (line < end.line || character <= end.character)
   );
+}
+
+// TODO - Move to ast helpers...
+//
+// biome-ignore lint/suspicious/noExplicitAny: We don't have a type for the definition response yet
+export function definitionToNode(definition: any) {
+  const definitionUri = URI.parse(definition.uri);
+  const definitionFilePath = definitionUri.fsPath;
+
+  // Read the file content for the file that contains the definition
+  const fileContent = fs.readFileSync(definitionFilePath, "utf-8");
+
+  // Parse the file to do ast analysis
+  const sourceFile = ts.createSourceFile(
+    definitionFilePath,
+    fileContent,
+    ts.ScriptTarget.Latest,
+    true,
+  );
+
+  // Find the node at the definition position
+  const node = findNodeAtPosition(sourceFile, definition.range.start);
+
+  return { node, sourceFile, definitionFilePath };
 }

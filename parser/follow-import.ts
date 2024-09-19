@@ -2,6 +2,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import * as ts from "typescript";
 import type { MessageConnection } from "vscode-jsonrpc/node";
+import { getDefinitionText } from "./ast-helpers";
 import { getFileUri, openFile } from "./tsserver";
 
 export async function followImport(
@@ -11,7 +12,6 @@ export async function followImport(
   importNode: ts.ImportDeclaration,
   identifierNode: ts.Node,
 ) {
-  debugger;
   const importPath = (importNode.moduleSpecifier as ts.StringLiteral).text;
   let resolvedPath: string;
 
@@ -52,30 +52,58 @@ export async function followImport(
     true,
   );
 
-  // Find the exported declaration that matches the imported identifier
+  // Find the definition in the imported file
   const importClause = importNode.importClause;
-  if (importClause?.name) {
-    const importedIdentifier = importClause.name.text;
-    const exportedDeclaration = findExportedDeclaration(
-      importedSourceFile,
-      importedIdentifier,
-    );
+  if (importClause) {
+    let identifierToFind: string | undefined;
 
-    if (exportedDeclaration) {
-      return {
-        uri: getFileUri(resolvedPath),
-        // TODO - Add actual range (missing end position)
-        // range: exportedDeclaration.getSourceFile().getLineAndCharacterOfPosition(exportedDeclaration.getStart()),
-        range: {
-          start: exportedDeclaration
-            .getSourceFile()
-            .getLineAndCharacterOfPosition(exportedDeclaration.getStart()),
-          end: exportedDeclaration
-            .getSourceFile()
-            .getLineAndCharacterOfPosition(exportedDeclaration.getEnd()),
-        },
-        text: exportedDeclaration.getText(),
-      };
+    if (
+      importClause.name &&
+      importClause.name.text === identifierNode.getText()
+    ) {
+      // Default import
+      identifierToFind = importClause.name.text;
+    } else if (
+      importClause.namedBindings &&
+      ts.isNamedImports(importClause.namedBindings)
+    ) {
+      // Named import
+      const namedImport = importClause.namedBindings.elements.find(
+        (element) => element.name.text === identifierNode.getText(),
+      );
+      if (namedImport) {
+        identifierToFind =
+          namedImport.propertyName?.text || namedImport.name.text;
+      }
+    }
+
+    if (identifierToFind) {
+      console.debug(
+        `[debug] Identifier to find in file we're importing from: ${identifierToFind}`,
+      );
+      const importedNode = findExportedDeclaration(
+        importedSourceFile,
+        identifierToFind,
+      );
+      if (importedNode) {
+        const definitionText = getDefinitionText(
+          importedNode,
+          importedSourceFile,
+        );
+
+        return {
+          uri: getFileUri(resolvedPath),
+          range: {
+            start: importedSourceFile.getLineAndCharacterOfPosition(
+              importedNode.getStart(),
+            ),
+            end: importedSourceFile.getLineAndCharacterOfPosition(
+              importedNode.getEnd(),
+            ),
+          },
+          text: definitionText,
+        };
+      }
     }
   }
 

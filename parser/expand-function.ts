@@ -1,19 +1,15 @@
 import ts from "typescript";
 import {
+  definitionToNode,
   getDefinitionText,
   getParentImportDeclaration,
-} from "./ast-helpers/ast-helpers";
+} from "./ast-helpers";
+import { followImport } from "./follow-import";
 import {
   type FunctionOutOfScopeIdentifiers,
   searchForFunction,
 } from "./search-function";
-import {
-  definitionToNode,
-  getDefinition,
-  getFileUri,
-  getTSServer,
-  openFile,
-} from "./tsserver";
+import { getDefinition, getFileUri, getTSServer, openFile } from "./tsserver";
 
 // NOTES
 // - given handler definition
@@ -115,16 +111,15 @@ async function extractContext(
 
       if (definition) {
         // Find the node at the definition position
-        const { node, sourceFile } = definitionToNode(definition);
+        const { node, sourceFile, definitionFilePath } =
+          definitionToNode(definition);
 
         console.debug(`[debug] AST node for ${identifier.name}:`, node);
 
         // If there's a node, we can try to extract the value of the definition
         if (node) {
-          // TESTING
-          if (identifier.name === "getAuthHeader") {
-            debugger;
-          }
+          // First, handle the case where it was imported from another file.
+          // TODO - Handle node_modules, add some context about the module that was imported
           const parentImportDeclaration = getParentImportDeclaration(node);
           if (
             parentImportDeclaration &&
@@ -147,6 +142,8 @@ async function extractContext(
               context.push(contextEntry);
               continue;
             }
+
+            console.warn(`Failed to follow import for ${identifier.name}`);
           }
 
           const valueText = getDefinitionText(node, sourceFile);
