@@ -11,7 +11,6 @@ export type FunctionOutOfScopeIdentifiers = Array<{
   position: ts.LineAndCharacter;
 }>;
 
-
 type SearchFunctionResult = {
   /** The file in which the function was found */
   file: string;
@@ -53,7 +52,7 @@ function searchFile(
   filePath: string,
   searchString: string,
 ): SearchFunctionResult | null {
-  console.debug('[debug] Searching file:', filePath);
+  console.debug("[debug] Searching file:", filePath);
   const sourceFile = ts.createSourceFile(
     filePath,
     fs.readFileSync(filePath, "utf-8"),
@@ -72,7 +71,7 @@ function searchFile(
     // }
     // Look for the matching function definition
     if (isFunction && node?.getText() === searchString) {
-      console.debug('[debug] matched function we were looking for!');
+      console.debug("[debug] matched function we were looking for!");
       const { line: startLine, character: startColumn } =
         sourceFile.getLineAndCharacterOfPosition(node.getStart());
       const { line: endLine, character: endColumn } =
@@ -93,10 +92,16 @@ function searchFile(
       // NOTE - This should not incur a stack overflow, in spite of its recursion,
       // because the function is not calling itself, it's passing itself to an iterator as a callback
       ts.forEachChild(node, function collectDeclarations(childNode) {
-        if (ts.isVariableDeclaration(childNode) && childNode.name.kind === ts.SyntaxKind.Identifier) {
+        if (
+          ts.isVariableDeclaration(childNode) &&
+          childNode.name.kind === ts.SyntaxKind.Identifier
+        ) {
           localDeclarations.add(childNode.name.text);
         }
-        if (ts.isParameter(childNode) && childNode.name.kind === ts.SyntaxKind.Identifier) {
+        if (
+          ts.isParameter(childNode) &&
+          childNode.name.kind === ts.SyntaxKind.Identifier
+        ) {
           localDeclarations.add(childNode.name.text);
         }
         ts.forEachChild(childNode, collectDeclarations);
@@ -113,13 +118,18 @@ function searchFile(
               return;
             }
             // If it's the expression (left-hand side) and it's a local variable, skip it
-            if (childNode === childNode.parent.expression && localDeclarations.has(childNode.text)) {
+            if (
+              childNode === childNode.parent.expression &&
+              localDeclarations.has(childNode.text)
+            ) {
               return;
             }
             // If it's the expression but not a local variable, include it
             // Example: Property accesse expression on an out-of-scope variable
             if (childNode === childNode.parent.expression) {
-              const pos = sourceFile.getLineAndCharacterOfPosition(childNode.getStart());
+              const pos = sourceFile.getLineAndCharacterOfPosition(
+                childNode.getStart(),
+              );
               usedIdentifiers.set(childNode.text, pos);
               return;
             }
@@ -127,7 +137,9 @@ function searchFile(
 
           // If it's not a local declaration and not part of a skipped property access, add it
           if (!localDeclarations.has(childNode.text)) {
-            const pos = sourceFile.getLineAndCharacterOfPosition(childNode.getStart());
+            const pos = sourceFile.getLineAndCharacterOfPosition(
+              childNode.getStart(),
+            );
             usedIdentifiers.set(childNode.text, pos);
           }
         }
@@ -139,9 +151,9 @@ function searchFile(
         identifiers.push({
           name: identifier,
           // We can't reliably get the type without a working symbol table,
-          // which I think would require loading the entire project (all files) in to a 
+          // which I think would require loading the entire project (all files) in to a
           // typescript program and using its checker
-          type: 'unknown',
+          type: "unknown",
           position,
         });
       });

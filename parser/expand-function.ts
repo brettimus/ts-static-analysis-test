@@ -1,9 +1,12 @@
 import * as fs from "node:fs";
 import ts from "typescript";
-import { URI } from 'vscode-uri';
-import { getTSServer } from "./tsserver";
+import { URI } from "vscode-uri";
 import { findNodeAtPosition } from "./ast-helpers";
-import { type FunctionOutOfScopeIdentifiers, searchForFunction } from "./search-function";
+import {
+  type FunctionOutOfScopeIdentifiers,
+  searchForFunction,
+} from "./search-function";
+import { getTSServer } from "./tsserver";
 
 // NOTES
 // - given handler definition
@@ -56,7 +59,7 @@ export async function expandFunction(
   const context = await extractContext(
     projectRoot,
     searchResult.file,
-    searchResult.identifiers
+    searchResult.identifiers,
   );
   return {
     ...searchResult,
@@ -78,7 +81,9 @@ async function extractContext(
   // 3. Populating the context array with relevant information
 
   if (!identifiers?.length) {
-    console.debug('[debug] No out of scope identifiers found in function, skipping context extraction')
+    console.debug(
+      "[debug] No out of scope identifiers found in function, skipping context extraction",
+    );
     return [];
   }
 
@@ -87,26 +92,32 @@ async function extractContext(
 
     // Open the document containing the function
     // We do this to get more information on the definitions of the function's out-of-scope identifiers
-    const funcFileUri = `file://${filePath.replace(/\\/g, '/')}`;
-    const fileContent = fs.readFileSync(filePath, 'utf-8');
-    await connection.sendNotification('textDocument/didOpen', {
+    const funcFileUri = `file://${filePath.replace(/\\/g, "/")}`;
+    const fileContent = fs.readFileSync(filePath, "utf-8");
+    await connection.sendNotification("textDocument/didOpen", {
       textDocument: {
         uri: funcFileUri,
-        languageId: 'typescript',
+        languageId: "typescript",
         version: 1,
         text: fileContent,
       },
     });
 
-    console.debug('[debug] Opened document:', funcFileUri);
+    console.debug("[debug] Opened document:", funcFileUri);
 
     for (const identifier of identifiers) {
-      const definitionResponse = await connection.sendRequest('textDocument/definition', {
-        textDocument: { uri: funcFileUri },
-        position: identifier.position
-      });
+      const definitionResponse = await connection.sendRequest(
+        "textDocument/definition",
+        {
+          textDocument: { uri: funcFileUri },
+          position: identifier.position,
+        },
+      );
 
-      console.debug(`[debug] TS Lang Server definition response for ${identifier.name}:`, JSON.stringify(definitionResponse, null, 2));
+      console.debug(
+        `[debug] TS Lang Server definition response for ${identifier.name}:`,
+        JSON.stringify(definitionResponse, null, 2),
+      );
 
       if (Array.isArray(definitionResponse) && definitionResponse.length > 0) {
         const definition = definitionResponse[0];
@@ -114,14 +125,14 @@ async function extractContext(
         const definitionFilePath = definitionUri.fsPath;
 
         // Read the file content for the file that contains the definition
-        const fileContent = fs.readFileSync(definitionFilePath, 'utf-8');
+        const fileContent = fs.readFileSync(definitionFilePath, "utf-8");
 
         // Parse the file to do ast analysis
         const sourceFile = ts.createSourceFile(
           definitionFilePath,
           fileContent,
           ts.ScriptTarget.Latest,
-          true
+          true,
         );
 
         // Find the node at the definition position
@@ -133,9 +144,16 @@ async function extractContext(
 
           if (ts.isVariableDeclaration(node) && node.initializer) {
             valueText = node.initializer.getText(sourceFile);
-          } else if (ts.isFunctionDeclaration(node) || ts.isArrowFunction(node)) {
+          } else if (
+            ts.isFunctionDeclaration(node) ||
+            ts.isArrowFunction(node)
+          ) {
             valueText = node.getText(sourceFile);
-          } else if (ts.isIdentifier(node) && ts.isVariableDeclaration(node.parent) && node.parent.initializer) {
+          } else if (
+            ts.isIdentifier(node) &&
+            ts.isVariableDeclaration(node.parent) &&
+            node.parent.initializer
+          ) {
             valueText = node.parent.initializer.getText(sourceFile);
           }
 
@@ -146,23 +164,29 @@ async function extractContext(
             definition: {
               uri: definition.uri,
               range: definition.range,
-              text: valueText
-            }
-          }
+              text: valueText,
+            },
+          };
 
-          console.debug(`[debug] context entry for ${identifier.name}`, contextEntry)
+          console.debug(
+            `[debug] context entry for ${identifier.name}`,
+            contextEntry,
+          );
 
           context.push(contextEntry);
-
         } else {
-          console.warn(`AST parsing found no definition found for ${identifier.name} in ${definitionFilePath}`);
+          console.warn(
+            `AST parsing found no definition found for ${identifier.name} in ${definitionFilePath}`,
+          );
         }
       } else {
-        console.warn(`TSServer found no definition found for ${identifier.name}`);
+        console.warn(
+          `TSServer found no definition found for ${identifier.name}`,
+        );
       }
     }
   } catch (error) {
-    console.error('Error querying TSServer:', error);
+    console.error("Error querying TSServer:", error);
   }
 
   return context;

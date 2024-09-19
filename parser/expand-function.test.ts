@@ -24,6 +24,8 @@ describe("expandFunction", () => {
     expect(result?.endLine).toBe(13);
     expect(result?.endColumn).toBe(2);
 
-    expect(result?.context?.[0]?.definition?.text).toBe('["I am a cat", "I am a dog", "I am a bird"]');
+    expect(result?.context?.[0]?.definition?.text).toBe(
+      '["I am a cat", "I am a dog", "I am a bird"]',
+    );
   });
 });
