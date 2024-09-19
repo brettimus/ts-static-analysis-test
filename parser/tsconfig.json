@@ -11,6 +11,6 @@
 		"rootDir": "./",
 		"types": ["node", "vitest/globals"]
 	},
-	"include": ["*.ts", "src/**/*.ts", "src/**/*.tsx", "old/ast-analysis-hono-import.ts"],
+	"include": ["*.ts", "src/**/*.ts", "src/**/*.tsx", "old/ast-analysis-hono-import.ts", "tsserver/server.ts", "ast-helpers/ast-helpers.ts"],
 	"exclude": ["node_modules", "dist"]
 }

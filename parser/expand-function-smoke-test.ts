@@ -1,7 +1,7 @@
 import path from "node:path";
 import util from "node:util";
 import { expandFunction } from "./expand-function";
-import { getTSServer } from "./tsserver";
+import { getTSServer } from "./tsserver/server";
 
 const projectRoot = path.resolve(__dirname, "../app");
 const srcPath = path.resolve(__dirname, "../app/src");
@@ -15,9 +15,18 @@ const functionWithConstant = `(c) => {
   return c.text("Unauthorized", 401);
 }`.trim();
 
+// biome-ignore lint/correctness/noUnusedVariables: This is a smoke testing file
 const functionWithHelper = `(c) => {
   const shouldSayHello = helperFunction(c.req);
   return c.text(shouldSayHello ? "Hello Helper Function!" : "Helper Function");
+}`.trim();
+
+const functionWithHelperInAnotherFile = `(c) => {
+  const auth = getAuthHeader(c.req);
+  if (auth && PASSPHRASES.includes(auth)) {
+    return c.text("Hello Hono!");
+  }
+  return c.text("Unauthorized", 401);
 }`.trim();
 
 async function main() {
@@ -26,7 +35,7 @@ async function main() {
     const result = await expandFunction(
       projectRoot,
       srcPath,
-      functionWithHelper,
+      functionWithHelperInAnotherFile,
     );
     console.log(result);
   } catch (error) {

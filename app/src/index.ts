@@ -1,4 +1,5 @@
 import { Hono, type HonoRequest } from "hono";
+import { getAuthHeader } from "./utils";
 
 const app = new Hono();
 
@@ -15,6 +16,14 @@ app.get("/const", (c) => {
 app.get("/helper-function", (c) => {
   const shouldSayHello = helperFunction(c.req);
   return c.text(shouldSayHello ? "Hello Helper Function!" : "Helper Function");
+});
+
+app.get("/const-and-helper-out-of-file", (c) => {
+  const auth = getAuthHeader(c.req);
+  if (auth && PASSPHRASES.includes(auth)) {
+    return c.text("Hello Hono!");
+  }
+  return c.text("Unauthorized", 401);
 });
 
 export default app;

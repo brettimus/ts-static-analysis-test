@@ -1,7 +1,22 @@
 import * as ts from "typescript";
 
+export function getParentImportDeclaration(
+  node: ts.Node,
+): ts.ImportDeclaration | undefined {
+  let parent = node.parent;
+  while (parent && !ts.isSourceFile(parent)) {
+    if (ts.isImportDeclaration(parent)) {
+      return parent;
+    }
+    parent = parent.parent;
+  }
+  return undefined;
+}
+
 export function getDefinitionText(node: ts.Node, sourceFile: ts.SourceFile) {
-  // Variable declaration with initializer
+  // debugger;
+
+  // Check: Variable declaration with initializer
   // `const y = ...`
   // `let x = ...`
   if (ts.isVariableDeclaration(node) && node.initializer) {

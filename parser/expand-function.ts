@@ -1,12 +1,19 @@
-import * as fs from "node:fs";
 import ts from "typescript";
-import { URI } from "vscode-uri";
-import { findNodeAtPosition, getDefinitionText } from "./ast-helpers";
+import {
+  getDefinitionText,
+  getParentImportDeclaration,
+} from "./ast-helpers/ast-helpers";
 import {
   type FunctionOutOfScopeIdentifiers,
   searchForFunction,
 } from "./search-function";
-import { getTSServer } from "./tsserver";
+import {
+  definitionToNode,
+  getDefinition,
+  getFileUri,
+  getTSServer,
+  openFile,
+} from "./tsserver";
 
 // NOTES
 // - given handler definition
@@ -92,57 +99,56 @@ async function extractContext(
 
     // Open the document containing the function
     // We do this to get more information on the definitions of the function's out-of-scope identifiers
-    const funcFileUri = `file://${filePath.replace(/\\/g, "/")}`;
-    const fileContent = fs.readFileSync(filePath, "utf-8");
-    await connection.sendNotification("textDocument/didOpen", {
-      textDocument: {
-        uri: funcFileUri,
-        languageId: "typescript",
-        version: 1,
-        text: fileContent,
-      },
-    });
+    // INVESTIGATE: Why do we need to open the file here? (Things were failing for me if I didn't do this)
+    await openFile(connection, filePath);
 
-    console.debug("[debug] Opened document:", funcFileUri);
+    const funcFileUri = getFileUri(filePath);
 
+    // Loop through each identifier in the function and find its definition
     for (const identifier of identifiers) {
-      const definitionResponse = await connection.sendRequest(
-        "textDocument/definition",
-        {
-          textDocument: { uri: funcFileUri },
-          position: identifier.position,
-        },
+      const definition = await getDefinition(
+        connection,
+        funcFileUri,
+        identifier.position,
+        identifier.name,
       );
 
-      console.debug(
-        `[debug] TS Lang Server definition response for ${identifier.name}:`,
-        JSON.stringify(definitionResponse, null, 2),
-      );
-
-      if (Array.isArray(definitionResponse) && definitionResponse.length > 0) {
-        // INVESTIGATE - When is definitionResponse longer than 1?
-        const definition = definitionResponse[0];
-        const definitionUri = URI.parse(definition.uri);
-        const definitionFilePath = definitionUri.fsPath;
-
-        // Read the file content for the file that contains the definition
-        const fileContent = fs.readFileSync(definitionFilePath, "utf-8");
-
-        // Parse the file to do ast analysis
-        const sourceFile = ts.createSourceFile(
-          definitionFilePath,
-          fileContent,
-          ts.ScriptTarget.Latest,
-          true,
-        );
-
+      if (definition) {
         // Find the node at the definition position
-        const node = findNodeAtPosition(sourceFile, definition.range.start);
+        const { node, sourceFile } = definitionToNode(definition);
 
         console.debug(`[debug] AST node for ${identifier.name}:`, node);
 
         // If there's a node, we can try to extract the value of the definition
         if (node) {
+          // TESTING
+          if (identifier.name === "getAuthHeader") {
+            debugger;
+          }
+          const parentImportDeclaration = getParentImportDeclaration(node);
+          if (
+            parentImportDeclaration &&
+            ts.isImportDeclaration(parentImportDeclaration)
+          ) {
+            const importedDefinition = await followImport(
+              connection,
+              projectRoot,
+              definitionFilePath,
+              parentImportDeclaration,
+              node,
+            );
+            if (importedDefinition) {
+              const contextEntry = {
+                name: identifier.name,
+                type: identifier.type,
+                position: identifier.position,
+                definition: importedDefinition,
+              };
+              context.push(contextEntry);
+              continue;
+            }
+          }
+
           const valueText = getDefinitionText(node, sourceFile);
 
           const contextEntry = {
